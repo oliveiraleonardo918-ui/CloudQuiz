@@ -1,25 +1,30 @@
 // src/services/back4app.ts
-// Configuração do Parse SDK e funções de comunicação com o Back4App
+// Configuracao do Parse SDK e funcoes de comunicacao com o Back4App
 
-import Parse from 'parse';
+// Importa Parse como namespace - funciona com modulos CJS sem default export
+// @ts-ignore
+import * as ParseAll from 'parse';
+
+// O Parse pode estar em .default (ESM) ou no namespace (CJS) - tentamos os dois
+const Parse: any = (ParseAll as any).default ?? ParseAll;
 
 // ============================================================
-// INICIALIZAÇÃO DO PARSE
+// INICIALIZACAO DO PARSE
 // ============================================================
 
 const APP_ID = import.meta.env.VITE_BACK4APP_APP_ID;
 const JS_KEY = import.meta.env.VITE_BACK4APP_JS_KEY;
 
 if (!APP_ID || !JS_KEY) {
-  console.error(
-    '❌ Chaves do Back4App não configuradas. Verifique seu arquivo .env'
-  );
+  console.error('Chaves do Back4App nao configuradas. Verifique seu arquivo .env');
 }
 
-Parse.initialize(APP_ID, JS_KEY);
-Parse.serverURL = 'https://parseapi.back4app.com/';
-
-export default Parse;
+if (typeof Parse.initialize !== 'function') {
+  console.error('Parse SDK nao carregou corretamente. Conteudo do modulo:', ParseAll);
+} else {
+  Parse.initialize(APP_ID, JS_KEY);
+  Parse.serverURL = 'https://parseapi.back4app.com/';
+}
 
 // ============================================================
 // TIPOS
@@ -46,10 +51,10 @@ export interface ScoreEntry {
 }
 
 // ============================================================
-// AUTENTICAÇÃO
+// AUTENTICACAO
 // ============================================================
 
-export async function signUp(username: string, password: string): Promise<Parse.User> {
+export async function signUp(username: string, password: string): Promise<any> {
   const user = new Parse.User();
   user.set('username', username);
   user.set('password', password);
@@ -62,7 +67,7 @@ export async function signUp(username: string, password: string): Promise<Parse.
   }
 }
 
-export async function logIn(username: string, password: string): Promise<Parse.User> {
+export async function logIn(username: string, password: string): Promise<any> {
   try {
     const user = await Parse.User.logIn(username, password);
     return user;
@@ -75,7 +80,7 @@ export async function logOut(): Promise<void> {
   await Parse.User.logOut();
 }
 
-export function getCurrentUser(): Parse.User | null {
+export function getCurrentUser(): any | null {
   return Parse.User.current();
 }
 
@@ -83,22 +88,17 @@ export function getCurrentUser(): Parse.User | null {
 // PERGUNTAS
 // ============================================================
 
-/**
- * Busca 10 perguntas aleatórias do banco
- */
 export async function fetchQuestions(limit: number = 10): Promise<Question[]> {
-  const Question = Parse.Object.extend('Question');
-  const query = new Parse.Query(Question);
-  query.limit(100); // pega até 100 perguntas para sortear depois
+  const QuestionClass = Parse.Object.extend('Question');
+  const query = new Parse.Query(QuestionClass);
+  query.limit(100);
 
   try {
     const results = await query.find();
-
-    // Embaralha e pega as primeiras "limit"
     const shuffled = results.sort(() => Math.random() - 0.5);
     const selected = shuffled.slice(0, limit);
 
-    return selected.map((q) => ({
+    return selected.map((q: any) => ({
       id: q.id || '',
       statement: q.get('statement'),
       optionA: q.get('optionA'),
@@ -114,16 +114,13 @@ export async function fetchQuestions(limit: number = 10): Promise<Question[]> {
 }
 
 // ============================================================
-// PONTUAÇÃO (SCORE)
+// PONTUACAO (SCORE)
 // ============================================================
 
-/**
- * Salva o resultado de uma partida no Back4App
- */
 export async function saveScore(points: number, totalQuestions: number): Promise<void> {
   const currentUser = Parse.User.current();
   if (!currentUser) {
-    throw new Error('Usuário não autenticado');
+    throw new Error('Usuario nao autenticado');
   }
 
   const Score = Parse.Object.extend('Score');
@@ -137,29 +134,26 @@ export async function saveScore(points: number, totalQuestions: number): Promise
   try {
     await score.save();
   } catch (error: any) {
-    throw new Error('Erro ao salvar pontuação: ' + error.message);
+    throw new Error('Erro ao salvar pontuacao: ' + error.message);
   }
 }
 
-/**
- * Busca o leaderboard global (top N por pontuação)
- */
 export async function fetchLeaderboard(limit: number = 10): Promise<ScoreEntry[]> {
   const Score = Parse.Object.extend('Score');
   const query = new Parse.Query(Score);
 
   query.descending('points');
   query.limit(limit);
-  query.include('playerId'); // traz dados do usuário junto
+  query.include('playerId');
 
   try {
     const results = await query.find();
     const currentUser = Parse.User.current();
     const currentUserId = currentUser?.id;
 
-    return results.map((scoreObj) => {
+    return results.map((scoreObj: any) => {
       const player = scoreObj.get('playerId');
-      const username = player?.get('username') || 'Anônimo';
+      const username = player?.get('username') || 'Anonimo';
 
       return {
         id: scoreObj.id || '',
@@ -181,16 +175,16 @@ export async function fetchLeaderboard(limit: number = 10): Promise<ScoreEntry[]
 
 function traduzErro(mensagem: string): string {
   if (mensagem.includes('Invalid username/password')) {
-    return 'Usuário ou senha inválidos.';
+    return 'Usuario ou senha invalidos.';
   }
   if (mensagem.includes('already taken')) {
-    return 'Esse nome de usuário já está em uso.';
+    return 'Esse nome de usuario ja esta em uso.';
   }
   if (mensagem.includes('cannot be empty')) {
     return 'Preencha todos os campos.';
   }
   if (mensagem.includes('Network')) {
-    return 'Erro de conexão. Verifique sua internet.';
+    return 'Erro de conexao. Verifique sua internet.';
   }
   return mensagem;
 }

@@ -1,11 +1,12 @@
 // src/context/AuthContext.tsx
 // Gerencia o estado de autenticação em toda a aplicação
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import Parse, { getCurrentUser, logIn as apiLogIn, signUp as apiSignUp, logOut as apiLogOut } from '../services/back4app';
+import { createContext, useContext, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
+import { getCurrentUser, logIn as apiLogIn, signUp as apiSignUp, logOut as apiLogOut } from '../services/back4app';
 
 interface AuthContextType {
-  user: Parse.User | null;
+  user: any | null;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string) => Promise<void>;
@@ -19,7 +20,7 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
-  const [user, setUser] = useState<Parse.User | null>(null);
+  const [user, setUser] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Ao montar, verifica se já tem usuário logado (sessão persistente)
