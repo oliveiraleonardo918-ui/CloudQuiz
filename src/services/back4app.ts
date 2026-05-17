@@ -123,10 +123,14 @@ export async function saveScore(points: number, totalQuestions: number): Promise
     throw new Error('Usuario nao autenticado');
   }
 
+  const username = currentUser.get('username') || 'Anonimo';
+
   const Score = Parse.Object.extend('Score');
   const score = new Score();
 
+  // Salvamos tanto o pointer (relacionamento) quanto o username (denormalizado pro leaderboard)
   score.set('playerId', currentUser);
+  score.set('username', username);
   score.set('points', points);
   score.set('totalQuestions', totalQuestions);
   score.set('playedAt', new Date());
@@ -144,7 +148,6 @@ export async function fetchLeaderboard(limit: number = 10): Promise<ScoreEntry[]
 
   query.descending('points');
   query.limit(limit);
-  query.include('playerId');
 
   try {
     const results = await query.find();
@@ -152,8 +155,13 @@ export async function fetchLeaderboard(limit: number = 10): Promise<ScoreEntry[]
     const currentUserId = currentUser?.id;
 
     return results.map((scoreObj: any) => {
-      const player = scoreObj.get('playerId');
-      const username = player?.get('username') || 'Anonimo';
+      // Le o username direto do Score (desnormalizado)
+      // Fallback para scores antigos que nao tem o campo username
+      const username = scoreObj.get('username') || 'Anonimo';
+
+      // Verifica se eh do usuario atual via Pointer
+      const playerPointer = scoreObj.get('playerId');
+      const isCurrentUser = playerPointer?.id === currentUserId;
 
       return {
         id: scoreObj.id || '',
@@ -161,7 +169,7 @@ export async function fetchLeaderboard(limit: number = 10): Promise<ScoreEntry[]
         points: scoreObj.get('points'),
         totalQuestions: scoreObj.get('totalQuestions'),
         playedAt: scoreObj.get('playedAt'),
-        isCurrentUser: player?.id === currentUserId,
+        isCurrentUser,
       };
     });
   } catch (error: any) {
