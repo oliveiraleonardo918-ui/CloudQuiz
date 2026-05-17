@@ -1,0 +1,160 @@
+name: Backend CI/CD
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  pull-requests: write
+  statuses: write
+  checks: write
+
+jobs:
+  process-pr:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Verificar se a PR foi aprovada
+        id: check_approval
+        run: |
+          if [[ "${{ github.event.review.state }}" == "approved" ]]; then
+            echo "approved=true" >> $GITHUB_ENV
+          else
+            echo "approved=false" >> $GITHUB_ENV
+          fi
+
+      - name: Verificar tipo da branch
+        if: env.approved == 'true'
+        id: check_branch_type
+        run: |
+          HEAD_REF="${{ github.event.pull_request.head.ref }}"
+          BASE_REF="${{ github.event.pull_request.base.ref }}"
+          if [[ "$HEAD_REF" =~ ^(feature|feat)/ ]]; then
+            echo "branch_type=feature" >> $GITHUB_ENV
+            echo "feature_name=$(echo $HEAD_REF | sed -E 's/(feature|feat)\///')" >> $GITHUB_ENV
+          elif [[ "$HEAD_REF" =~ ^(bugfix|bug|fix)/ ]]; then
+            echo "branch_type=bugfix" >> $GITHUB_ENV
+            echo "bugfix_name=$(echo $HEAD_REF | sed -E 's/(bugfix|bug|fix)\///')" >> $GITHUB_ENV
+          elif [[ "$HEAD_REF" =~ ^release/ && "$BASE_REF" == "main" ]]; then
+            echo "branch_type=release" >> $GITHUB_ENV
+            echo "release_version=$(echo $HEAD_REF | sed -E 's/release\///')" >> $GITHUB_ENV
+          else
+            echo "branch_type=unknown" >> $GITHUB_ENV
+          fi
+
+      - name: Checkout do repositório
+        if: env.approved == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configurar Git
+        if: env.approved == 'true'
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+
+      - name: Verificar conflitos de merge
+        if: env.approved == 'true'
+        run: |
+          echo "Verificando conflitos de merge..."
+          BASE_REF="${{ github.event.pull_request.base.ref }}"
+          HEAD_REF="${{ github.event.pull_request.head.ref }}"
+          git fetch origin "$BASE_REF"
+          git fetch origin "$HEAD_REF"
+
+          # Simula o merge em memória para detectar apenas conflitos de conteúdo.
+          # Divergências de histórico (branch atrás da base) não são consideradas conflito.
+          set +e
+          MERGE_OUTPUT=$(git merge-tree --write-tree --name-only "origin/$BASE_REF" "origin/$HEAD_REF")
+          MERGE_STATUS=$?
+          set -e
+
+          if [ $MERGE_STATUS -eq 1 ]; then
+            echo "::error::Existem conflitos de merge entre as branches. Por favor, resolva-os antes de prosseguir."
+            echo "Arquivos em conflito:"
+            echo "$MERGE_OUTPUT" | tail -n +2
+            exit 1
+          elif [ $MERGE_STATUS -gt 1 ]; then
+            echo "::error::Falha ao verificar conflitos (exit=$MERGE_STATUS)."
+            echo "$MERGE_OUTPUT"
+            exit 1
+          fi
+          echo "Nenhum conflito de merge encontrado."
+
+      - name: Processar feature
+        if: env.approved == 'true' && env.branch_type == 'feature'
+        run: |
+          echo "Processando feature: ${{ env.feature_name }}"
+          # Fazer merge da PR para a branch main
+          gh pr merge ${{ github.event.pull_request.number }} \
+            --merge \
+            --auto \
+            --delete-branch \
+            --subject "feat: ${{ env.feature_name }}" \
+            --body "Merge automático da feature ${{ env.feature_name }} para a branch main"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Processar bugfix
+        if: env.approved == 'true' && env.branch_type == 'bugfix'
+        run: |
+          echo "Processando bugfix: ${{ env.bugfix_name }}"
+          # Fazer merge da PR para a branch main
+          gh pr merge ${{ github.event.pull_request.number }} \
+            --merge \
+            --auto \
+            --delete-branch \
+            --subject "fix: ${{ env.bugfix_name }}" \
+            --body "Merge automático do bugfix ${{ env.bugfix_name }} para a branch main"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Processar release
+        if: env.approved == 'true' && env.branch_type == 'release'
+        run: |
+          VERSION="${{ env.release_version }}"
+          TAG="v${VERSION}"
+          BASE_REF="${{ github.event.pull_request.base.ref }}"
+          echo "Processando release: ${VERSION}"
+
+          # Aborta se a tag já existir para evitar duplicidade
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::A release ${TAG} já existe. Abortando."
+            exit 1
+          fi
+
+          # Merge síncrono (sem --auto) para garantir que o commit esteja na main antes da tag
+          gh pr merge ${{ github.event.pull_request.number }} \
+            --merge \
+            --delete-branch \
+            --subject "release: ${VERSION}" \
+            --body "Merge automático da release ${VERSION} para a branch ${BASE_REF}"
+
+          # Obtém o SHA da main após o merge para apontar a tag
+          git fetch origin "$BASE_REF"
+          MERGE_SHA=$(git rev-parse "origin/${BASE_REF}")
+          echo "Criando tag ${TAG} no commit ${MERGE_SHA}"
+
+          gh release create "$TAG" \
+            --target "$MERGE_SHA" \
+            --title "Release ${TAG}" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Processar branch desconhecida
+        if: env.approved == 'true' && env.branch_type == 'unknown'
+        run: |
+          echo "Processando branch desconhecida: ${{ github.event.pull_request.head.ref }}"
+          # Fazer merge da PR para a branch main
+          gh pr merge ${{ github.event.pull_request.number }} \
+            --merge \
+            --auto \
+            --delete-branch \
+            --subject "merge: ${{ github.event.pull_request.title }}" \
+            --body "Merge automático da PR #${{ github.event.pull_request.number }} para a branch main"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
