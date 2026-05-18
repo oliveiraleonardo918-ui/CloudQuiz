@@ -1,14 +1,17 @@
 // src/pages/LoginScreen.tsx
-// Tela de login - adaptada do Figma com autenticação real
+// Tela de login - login normal + Google OAuth (via id_token)
 
-import { useState, FormEvent } from 'react';
+import { useState } from 'react';
+import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Cloud } from 'lucide-react';
+import { GoogleLogin } from '@react-oauth/google';
+import type { CredentialResponse } from '@react-oauth/google';
 import { useAuth } from '../context/AuthContext';
 
 export function LoginScreen() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -19,7 +22,6 @@ export function LoginScreen() {
     e.preventDefault();
     setErrorMsg('');
 
-    // Validação básica
     if (!username.trim() || !password.trim()) {
       setErrorMsg('Preencha todos os campos.');
       return;
@@ -38,6 +40,59 @@ export function LoginScreen() {
 
   function handleGoToRegister() {
     navigate('/register');
+  }
+
+  // Decodifica o JWT do Google pra extrair info do usuario (sub, email, name)
+  function parseJwt(token: string): any {
+    try {
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(
+        atob(base64)
+          .split('')
+          .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+          .join('')
+      );
+      return JSON.parse(jsonPayload);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Callback quando Google retorna sucesso (recebe id_token)
+  async function handleGoogleSuccess(credentialResponse: CredentialResponse) {
+    setIsLoading(true);
+    setErrorMsg('');
+
+    try {
+      const idToken = credentialResponse.credential;
+      if (!idToken) {
+        throw new Error('Token do Google nao recebido');
+      }
+
+      // Decodifica o JWT pra pegar id, email e nome
+      const decoded = parseJwt(idToken);
+      if (!decoded) {
+        throw new Error('Falha ao decodificar token do Google');
+      }
+
+      await loginWithGoogle({
+        id: decoded.sub, // ID unico do Google
+        id_token: idToken,
+        email: decoded.email,
+        name: decoded.name,
+      });
+
+      navigate('/quiz');
+    } catch (error: any) {
+      setErrorMsg(error.message || 'Erro ao autenticar com Google.');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function handleGoogleError() {
+    setErrorMsg('Falha no login com Google. Tente novamente.');
   }
 
   return (
@@ -93,6 +148,26 @@ export function LoginScreen() {
           >
             Register
           </button>
+
+          {/* Divisor */}
+          <div className="flex items-center my-2">
+            <div className="flex-1 border-t border-gray-300"></div>
+            <span className="px-4 text-gray-500 text-sm">or</span>
+            <div className="flex-1 border-t border-gray-300"></div>
+          </div>
+
+          {/* Componente oficial do Google - retorna id_token (JWT) */}
+          <div className="flex justify-center">
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={handleGoogleError}
+              text="signin_with"
+              shape="rectangular"
+              theme="outline"
+              size="large"
+              width="384"
+            />
+          </div>
         </div>
       </form>
     </div>
