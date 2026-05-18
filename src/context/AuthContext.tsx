@@ -1,15 +1,23 @@
 // src/context/AuthContext.tsx
-// Gerencia o estado de autenticação em toda a aplicação
+// Gerencia o estado de autenticacao em toda a aplicacao
 
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import { getCurrentUser, logIn as apiLogIn, signUp as apiSignUp, logOut as apiLogOut } from '../services/back4app';
+import {
+  getCurrentUser,
+  logIn as apiLogIn,
+  signUp as apiSignUp,
+  logOut as apiLogOut,
+  signInWithGoogle as apiSignInWithGoogle,
+} from '../services/back4app';
+import type { GoogleAuthData } from '../services/back4app';
 
 interface AuthContextType {
   user: any | null;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string) => Promise<void>;
+  loginWithGoogle: (googleData: GoogleAuthData) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -23,7 +31,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Ao montar, verifica se já tem usuário logado (sessão persistente)
   useEffect(() => {
     const currentUser = getCurrentUser();
     setUser(currentUser);
@@ -40,19 +47,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setUser(newUser);
   };
 
+  const loginWithGoogle = async (googleData: GoogleAuthData) => {
+    const googleUser = await apiSignInWithGoogle(googleData);
+    setUser(googleUser);
+  };
+
   const logout = async () => {
     await apiLogOut();
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, register, loginWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-// Hook customizado para usar o contexto facilmente
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
