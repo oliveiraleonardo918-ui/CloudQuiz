@@ -1,23 +1,23 @@
 // src/services/back4app.ts
-// Configuracao do Parse SDK e funcoes de comunicacao com o Back4App
+// Configuração do Parse SDK e funções de comunicação com o Back4App
 
 // @ts-ignore
 import * as ParseAll from 'parse';
 const Parse: any = (ParseAll as any).default ?? ParseAll;
 
 // ============================================================
-// INICIALIZACAO DO PARSE
+// INICIALIZAÇÃO DO PARSE
 // ============================================================
 
 const APP_ID = import.meta.env.VITE_BACK4APP_APP_ID;
 const JS_KEY = import.meta.env.VITE_BACK4APP_JS_KEY;
 
 if (!APP_ID || !JS_KEY) {
-  console.error('Chaves do Back4App nao configuradas. Verifique seu arquivo .env');
+  console.error('Chaves do Back4App não configuradas. Verifique seu arquivo .env');
 }
 
 if (typeof Parse.initialize !== 'function') {
-  console.error('Parse SDK nao carregou corretamente. Conteudo do modulo:', ParseAll);
+  console.error('Parse SDK não carregou corretamente. Conteúdo do módulo:', ParseAll);
 } else {
   Parse.initialize(APP_ID, JS_KEY);
   Parse.serverURL = 'https://parseapi.back4app.com/';
@@ -26,6 +26,8 @@ if (typeof Parse.initialize !== 'function') {
 // ============================================================
 // TIPOS
 // ============================================================
+
+export type Difficulty = 'easy' | 'medium' | 'hard';
 
 export interface Question {
   id: string;
@@ -36,6 +38,7 @@ export interface Question {
   optionD: string;
   correctAnswer: string;
   category: string;
+  difficulty: Difficulty;
 }
 
 export interface ScoreEntry {
@@ -55,18 +58,11 @@ export interface GoogleAuthData {
 }
 
 // ============================================================
-// AUTENTICACAO - Helper
+// HELPERS
 // ============================================================
 
-/**
- * Retorna o nome de exibicao do usuario, com prioridade:
- * 1. displayName (nome real do Google, se foi salvo)
- * 2. email (se for Google e o username for um ID aleatorio)
- * 3. username (login normal)
- * 4. fallback "Anonimo"
- */
 function getDisplayName(user: any): string {
-  if (!user) return 'Anonimo';
+  if (!user) return 'Anônimo';
 
   const displayName = user.get('displayName');
   if (displayName && displayName.trim()) return displayName;
@@ -74,18 +70,16 @@ function getDisplayName(user: any): string {
   const email = user.get('email');
   const username = user.get('username') || '';
 
-  // Se username parece um ID aleatorio do Parse (20 chars alfanumericos sem caracteres especiais)
   const looksLikeRandomId = /^[a-zA-Z0-9]{16,}$/.test(username);
   if (looksLikeRandomId && email) {
-    // Retorna so a parte antes do @ do email
     return email.split('@')[0];
   }
 
-  return username || 'Anonimo';
+  return username || 'Anônimo';
 }
 
 // ============================================================
-// AUTENTICACAO
+// AUTENTICAÇÃO
 // ============================================================
 
 export async function signUp(username: string, password: string): Promise<any> {
@@ -116,10 +110,6 @@ export function getCurrentUser(): any | null {
   return Parse.User.current();
 }
 
-/**
- * Autentica via Google usando Parse.User.logInWith
- * Apos autenticar, salva displayName e email no usuario (pra ficar bonito no leaderboard)
- */
 export async function signInWithGoogle(googleData: GoogleAuthData): Promise<any> {
   try {
     const authData = {
@@ -129,8 +119,6 @@ export async function signInWithGoogle(googleData: GoogleAuthData): Promise<any>
 
     const user = await Parse.User.logInWith('google', { authData });
 
-    // Sempre tenta salvar/atualizar displayName e email apos login Google
-    // Isso garante que mesmo logins repetidos atualizem os dados se mudaram
     let needsSave = false;
 
     if (googleData.name && user.get('displayName') !== googleData.name) {
@@ -147,8 +135,7 @@ export async function signInWithGoogle(googleData: GoogleAuthData): Promise<any>
       try {
         await user.save();
       } catch (saveError: any) {
-        // Nao quebra o login se falhar o save dos dados extras
-        console.warn('Aviso: nao conseguiu salvar displayName/email do Google:', saveError.message);
+        console.warn('Aviso: não conseguiu salvar displayName/email do Google:', saveError.message);
       }
     }
 
@@ -181,6 +168,7 @@ export async function fetchQuestions(limit: number = 10): Promise<Question[]> {
       optionD: q.get('optionD'),
       correctAnswer: q.get('correctAnswer'),
       category: q.get('category'),
+      difficulty: (q.get('difficulty') || 'medium') as Difficulty,
     }));
   } catch (error: any) {
     throw new Error('Erro ao buscar perguntas: ' + error.message);
@@ -188,16 +176,15 @@ export async function fetchQuestions(limit: number = 10): Promise<Question[]> {
 }
 
 // ============================================================
-// PONTUACAO (SCORE)
+// PONTUAÇÃO (SCORE)
 // ============================================================
 
 export async function saveScore(points: number, totalQuestions: number): Promise<void> {
   const currentUser = Parse.User.current();
   if (!currentUser) {
-    throw new Error('Usuario nao autenticado');
+    throw new Error('Usuário não autenticado');
   }
 
-  // Usa displayName se existir, senao username, senao email
   const displayName = getDisplayName(currentUser);
 
   const Score = Parse.Object.extend('Score');
@@ -212,7 +199,7 @@ export async function saveScore(points: number, totalQuestions: number): Promise
   try {
     await score.save();
   } catch (error: any) {
-    throw new Error('Erro ao salvar pontuacao: ' + error.message);
+    throw new Error('Erro ao salvar pontuação: ' + error.message);
   }
 }
 
@@ -229,7 +216,7 @@ export async function fetchLeaderboard(limit: number = 10): Promise<ScoreEntry[]
     const currentUserId = currentUser?.id;
 
     return results.map((scoreObj: any) => {
-      const username = scoreObj.get('username') || 'Anonimo';
+      const username = scoreObj.get('username') || 'Anônimo';
       const playerPointer = scoreObj.get('playerId');
       const isCurrentUser = playerPointer?.id === currentUserId;
 
@@ -248,21 +235,55 @@ export async function fetchLeaderboard(limit: number = 10): Promise<ScoreEntry[]
 }
 
 // ============================================================
-// HELPERS
+// SCORING - Calculadora de pontos
+// ============================================================
+
+/**
+ * Calcula pontos por pergunta com base em:
+ * - Acertou ou não
+ * - Dificuldade da pergunta (multiplicador 1x / 1.5x / 2x)
+ * - Tempo restante quando respondeu (bônus de até +12 pontos)
+ *
+ * Fórmula (timer 12s):
+ *   base = 10 pontos
+ *   pontos = (base * multiplicador_dificuldade) + timeLeft
+ *
+ * Exemplos:
+ *   - Easy, 12s sobrando:  (10 * 1) + 12 = 22 pts
+ *   - Medium, 6s sobrando: (10 * 1.5) + 6 = 21 pts
+ *   - Hard, 0s sobrando:   (10 * 2) + 0 = 20 pts
+ *   - Hard, 12s sobrando:  (10 * 2) + 12 = 32 pts (MÁXIMO)
+ */
+export function calculateQuestionPoints(
+  correct: boolean,
+  difficulty: Difficulty,
+  timeLeftSeconds: number
+): number {
+  if (!correct) return 0;
+
+  const basePoints = 10;
+  const multiplier = difficulty === 'hard' ? 2 : difficulty === 'medium' ? 1.5 : 1;
+  const timeBonus = timeLeftSeconds;
+
+  return Math.round(basePoints * multiplier + timeBonus);
+}
+
+// ============================================================
+// HELPERS DE ERRO
 // ============================================================
 
 function traduzErro(mensagem: string): string {
   if (mensagem.includes('Invalid username/password')) {
-    return 'Usuario ou senha invalidos.';
+    return 'Usuário ou senha inválidos.';
   }
   if (mensagem.includes('already taken')) {
-    return 'Esse nome de usuario ja esta em uso.';
+    return 'Esse nome de usuário já está em uso.';
   }
   if (mensagem.includes('cannot be empty')) {
     return 'Preencha todos os campos.';
   }
   if (mensagem.includes('Network')) {
-    return 'Erro de conexao. Verifique sua internet.';
+    return 'Erro de conexão. Verifique sua internet.';
   }
   return mensagem;
 }
