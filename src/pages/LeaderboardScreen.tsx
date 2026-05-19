@@ -54,14 +54,14 @@ export function LeaderboardScreen() {
         {/* Cabeçalho */}
         <div className="flex items-center justify-center gap-3 mb-10">
           <Trophy className="w-10 h-10 text-amber-500" />
-          <h1 className="text-4xl text-gray-900">Global Leaderboard</h1>
+          <h1 className="text-4xl text-gray-900">Ranking Global</h1>
         </div>
 
-        {/* Card de pontuação atual (se veio do quiz) */}
+        {/* Card de pontuação atual */}
         {finalScore !== null && (
           <div className="bg-gradient-to-r from-amber-400 to-amber-500 rounded-2xl p-8 mb-8 shadow-md">
             <p className="text-white text-2xl">
-              Your score: <span className="font-semibold">{finalScore} pts</span> 🎉
+              Sua pontuação: <span className="font-semibold">{finalScore} pts</span> 🎉
             </p>
           </div>
         )}
@@ -102,17 +102,21 @@ export function LeaderboardScreen() {
                         rank === 1
                           ? 'bg-amber-400 text-white'
                           : player.isCurrentUser
-                          ? 'bg-teal-500 text-white'
-                          : 'bg-gray-200 text-gray-700'
+                            ? 'bg-teal-500 text-white'
+                            : 'bg-gray-200 text-gray-700'
                       }`}
                     >
                       {rank}
                     </div>
-                    <span className={`text-lg ${player.isCurrentUser ? 'text-teal-700' : 'text-gray-900'}`}>
+                    <span
+                      className={`text-lg ${player.isCurrentUser ? 'text-teal-700' : 'text-gray-900'}`}
+                    >
                       {player.username}
                     </span>
                   </div>
-                  <span className={`text-lg ${player.isCurrentUser ? 'text-teal-700' : 'text-gray-600'}`}>
+                  <span
+                    className={`text-lg ${player.isCurrentUser ? 'text-teal-700' : 'text-gray-600'}`}
+                  >
                     {player.points} pts
                   </span>
                 </div>
@@ -127,14 +131,14 @@ export function LeaderboardScreen() {
             onClick={handlePlayAgain}
             className="w-full py-4 bg-teal-500 text-white text-lg rounded-xl hover:bg-teal-600 transition-colors"
           >
-            Play Again
+            Jogar Novamente
           </button>
 
           <button
             onClick={handleLogout}
             className="w-full py-4 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors"
           >
-            Logout
+            Sair
           </button>
         </div>
       </div>

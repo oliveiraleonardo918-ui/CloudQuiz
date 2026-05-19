@@ -1,15 +1,25 @@
 // src/pages/QuizScreen.tsx
-// Tela do quiz - perguntas reais do Back4App, timer de 20s, pontuação
+// Tela do quiz - perguntas do Back4App, timer 12s, scoring com dificuldade + bônus de tempo
 
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Timer } from 'lucide-react';
-import { fetchQuestions, saveScore } from '../services/back4app';
-import type { Question } from '../services/back4app';
+import { Timer, Zap } from 'lucide-react';
+import { fetchQuestions, saveScore, calculateQuestionPoints } from '../services/back4app';
+import type { Question, Difficulty } from '../services/back4app';
 
-const QUESTION_TIME_SECONDS = 20;
+const QUESTION_TIME_SECONDS = 12;
 const TOTAL_QUESTIONS = 10;
-const POINTS_PER_CORRECT = 10;
+
+interface PointsAnimation {
+  value: number;
+  key: number;
+}
+
+const DIFFICULTY_STYLES: Record<Difficulty, { label: string; bg: string; text: string }> = {
+  easy: { label: 'Fácil', bg: 'bg-green-100', text: 'text-green-700' },
+  medium: { label: 'Médio', bg: 'bg-amber-100', text: 'text-amber-700' },
+  hard: { label: 'Difícil', bg: 'bg-red-100', text: 'text-red-700' },
+};
 
 export function QuizScreen() {
   const navigate = useNavigate();
@@ -22,10 +32,8 @@ export function QuizScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [pointsAnimation, setPointsAnimation] = useState<PointsAnimation | null>(null);
 
-  // ============================================================
-  // Carrega perguntas ao montar
-  // ============================================================
   useEffect(() => {
     async function load() {
       try {
@@ -44,53 +52,54 @@ export function QuizScreen() {
     load();
   }, []);
 
-  // ============================================================
-  // Avança para próxima pergunta ou finaliza partida
-  // ============================================================
-  const goToNextQuestion = useCallback(async (finalScore: number) => {
-    // Se ainda tem perguntas, avança
-    if (currentIndex < questions.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-      setSelectedAnswer('');
-      setTimeLeft(QUESTION_TIME_SECONDS);
-      return;
-    }
+  const goToNextQuestion = useCallback(
+    async (finalScore: number) => {
+      if (currentIndex < questions.length - 1) {
+        setCurrentIndex(currentIndex + 1);
+        setSelectedAnswer('');
+        setTimeLeft(QUESTION_TIME_SECONDS);
+        return;
+      }
 
-    // Última pergunta — salva no banco e vai pro leaderboard
-    setIsSubmitting(true);
-    try {
-      await saveScore(finalScore, questions.length);
-      navigate('/leaderboard', { state: { finalScore, total: questions.length } });
-    } catch (error: any) {
-      setErrorMsg(error.message || 'Erro ao salvar pontuação.');
-      setIsSubmitting(false);
-    }
-  }, [currentIndex, questions.length, navigate]);
+      setIsSubmitting(true);
+      try {
+        await saveScore(finalScore, questions.length);
+        navigate('/leaderboard', { state: { finalScore, total: questions.length } });
+      } catch (error: any) {
+        setErrorMsg(error.message || 'Erro ao salvar pontuação.');
+        setIsSubmitting(false);
+      }
+    },
+    [currentIndex, questions.length, navigate]
+  );
 
-  // ============================================================
-  // Confirma a resposta (clica no botão "Answer" ou estoura o timer)
-  // ============================================================
-  const handleAnswer = useCallback((answer: string) => {
-    const currentQuestion = questions[currentIndex];
-    if (!currentQuestion) return;
+  const handleAnswer = useCallback(
+    (answer: string) => {
+      const currentQuestion = questions[currentIndex];
+      if (!currentQuestion) return;
 
-    let newScore = score;
-    if (answer && answer === currentQuestion.correctAnswer) {
-      newScore = score + POINTS_PER_CORRECT;
-      setScore(newScore);
-    }
+      const correct = answer === currentQuestion.correctAnswer;
+      const earned = calculateQuestionPoints(correct, currentQuestion.difficulty, timeLeft);
+      const newScore = score + earned;
 
-    goToNextQuestion(newScore);
-  }, [questions, currentIndex, score, goToNextQuestion]);
+      if (earned > 0) {
+        setScore(newScore);
+        setPointsAnimation({ value: earned, key: Date.now() });
+      }
 
-  // ============================================================
-  // Timer: decrementa 1s e finaliza ao zerar
-  // ============================================================
+      const delay = earned > 0 ? 700 : 0;
+      setTimeout(() => {
+        setPointsAnimation(null);
+        goToNextQuestion(newScore);
+      }, delay);
+    },
+    [questions, currentIndex, score, timeLeft, goToNextQuestion]
+  );
+
   useEffect(() => {
-    if (isLoading || questions.length === 0 || isSubmitting) return;
+    if (isLoading || questions.length === 0 || isSubmitting || pointsAnimation) return;
 
     if (timeLeft <= 0) {
-      // Tempo esgotado: conta como resposta vazia (incorreta)
       handleAnswer('');
       return;
     }
@@ -100,11 +109,7 @@ export function QuizScreen() {
     }, 1000);
 
     return () => clearTimeout(timerId);
-  }, [timeLeft, isLoading, questions.length, isSubmitting, handleAnswer]);
-
-  // ============================================================
-  // Renderização
-  // ============================================================
+  }, [timeLeft, isLoading, questions.length, isSubmitting, pointsAnimation, handleAnswer]);
 
   if (isLoading) {
     return (
@@ -139,27 +144,54 @@ export function QuizScreen() {
   ];
 
   const progressPercent = ((currentIndex + 1) / questions.length) * 100;
+  const diffStyle = DIFFICULTY_STYLES[currentQuestion.difficulty];
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 px-8 py-12">
       <div className="max-w-3xl mx-auto w-full">
         {/* Cabeçalho */}
         <div className="flex items-center justify-between mb-10">
-          <span className="text-xl text-gray-700">
-            Question {currentIndex + 1} of {questions.length}
-          </span>
-          <div className={`flex items-center gap-2 px-5 py-2.5 rounded-full ${
-            timeLeft <= 5 ? 'bg-red-100 text-red-700' : 'bg-purple-100 text-purple-700'
-          }`}>
+          <div className="flex flex-col gap-1">
+            <span className="text-xl text-gray-700">
+              Pergunta {currentIndex + 1} de {questions.length}
+            </span>
+            <span className="text-sm text-gray-500">
+              Pontuação: <span className="font-semibold text-teal-600">{score} pts</span>
+            </span>
+          </div>
+          <div
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-full ${
+              timeLeft <= 3 ? 'bg-red-100 text-red-700' : 'bg-purple-100 text-purple-700'
+            }`}
+          >
             <Timer className="w-5 h-5" />
             <span className="text-lg">{timeLeft}s</span>
           </div>
         </div>
 
         {/* Pergunta */}
-        <div className="bg-white rounded-2xl p-8 mb-8 shadow-sm">
-          <p className="text-sm text-teal-600 mb-2">{currentQuestion.category}</p>
+        <div className="bg-white rounded-2xl p-8 mb-8 shadow-sm relative">
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <span className="text-sm px-3 py-1 bg-teal-50 text-teal-700 rounded-full">
+              {currentQuestion.category}
+            </span>
+            <span
+              className={`text-sm px-3 py-1 rounded-full font-medium ${diffStyle.bg} ${diffStyle.text}`}
+            >
+              {diffStyle.label}
+            </span>
+          </div>
           <p className="text-2xl text-gray-900">{currentQuestion.statement}</p>
+
+          {pointsAnimation && (
+            <div
+              key={pointsAnimation.key}
+              className="absolute top-4 right-4 flex items-center gap-1 bg-gradient-to-r from-yellow-400 to-amber-500 text-white px-4 py-2 rounded-full shadow-lg animate-bounce"
+            >
+              <Zap className="w-5 h-5" />
+              <span className="text-xl font-bold">+{pointsAnimation.value}</span>
+            </div>
+          )}
         </div>
 
         {/* Alternativas */}
@@ -168,28 +200,36 @@ export function QuizScreen() {
             <button
               key={answer.id}
               onClick={() => setSelectedAnswer(answer.id)}
-              disabled={isSubmitting}
+              disabled={isSubmitting || !!pointsAnimation}
               className={`w-full p-6 rounded-xl border-2 text-left transition-all text-lg ${
                 selectedAnswer === answer.id
                   ? 'border-teal-500 bg-teal-50'
                   : 'border-gray-200 bg-white hover:border-gray-300'
               } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
-              <span className={selectedAnswer === answer.id ? 'text-teal-700' : 'text-gray-700'}>
+              <span
+                className={
+                  selectedAnswer === answer.id ? 'text-teal-700' : 'text-gray-700'
+                }
+              >
                 {answer.id}) {answer.text}
               </span>
             </button>
           ))}
         </div>
 
-        {/* Botão de confirmar + barra de progresso */}
+        {/* Botão e barra de progresso */}
         <div className="space-y-4">
           <button
             onClick={() => handleAnswer(selectedAnswer)}
-            disabled={!selectedAnswer || isSubmitting}
+            disabled={!selectedAnswer || isSubmitting || !!pointsAnimation}
             className="w-full py-4 bg-teal-500 text-white text-lg rounded-xl hover:bg-teal-600 transition-colors disabled:bg-teal-300 disabled:cursor-not-allowed"
           >
-            {isSubmitting ? 'Salvando...' : currentIndex === questions.length - 1 ? 'Finish' : 'Answer'}
+            {isSubmitting
+              ? 'Salvando...'
+              : currentIndex === questions.length - 1
+                ? 'Finalizar'
+                : 'Responder'}
           </button>
 
           <div className="w-full bg-gray-200 rounded-full h-3">
