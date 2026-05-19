@@ -1,5 +1,5 @@
 // src/pages/LoginScreen.tsx
-// Tela de login - login normal + Google OAuth (via id_token)
+// Tela de login - login normal + Google OAuth
 
 import { useState } from 'react';
 import type { FormEvent } from 'react';
@@ -42,7 +42,6 @@ export function LoginScreen() {
     navigate('/register');
   }
 
-  // Decodifica o JWT do Google pra extrair info do usuario (sub, email, name)
   function parseJwt(token: string): any {
     try {
       const base64Url = token.split('.')[1];
@@ -59,7 +58,6 @@ export function LoginScreen() {
     }
   }
 
-  // Callback quando Google retorna sucesso (recebe id_token)
   async function handleGoogleSuccess(credentialResponse: CredentialResponse) {
     setIsLoading(true);
     setErrorMsg('');
@@ -67,17 +65,16 @@ export function LoginScreen() {
     try {
       const idToken = credentialResponse.credential;
       if (!idToken) {
-        throw new Error('Token do Google nao recebido');
+        throw new Error('Token do Google não recebido');
       }
 
-      // Decodifica o JWT pra pegar id, email e nome
       const decoded = parseJwt(idToken);
       if (!decoded) {
         throw new Error('Falha ao decodificar token do Google');
       }
 
       await loginWithGoogle({
-        id: decoded.sub, // ID unico do Google
+        id: decoded.sub,
         id_token: idToken,
         email: decoded.email,
         name: decoded.name,
@@ -106,7 +103,7 @@ export function LoginScreen() {
         <div>
           <input
             type="text"
-            placeholder="Username"
+            placeholder="Usuário"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             disabled={isLoading}
@@ -117,7 +114,7 @@ export function LoginScreen() {
         <div>
           <input
             type="password"
-            placeholder="Password"
+            placeholder="Senha"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             disabled={isLoading}
@@ -137,7 +134,7 @@ export function LoginScreen() {
             disabled={isLoading}
             className="w-full py-4 bg-teal-500 text-white rounded-xl hover:bg-teal-600 transition-colors disabled:bg-teal-300 disabled:cursor-not-allowed"
           >
-            {isLoading ? 'Entrando...' : 'Sign In'}
+            {isLoading ? 'Entrando...' : 'Entrar'}
           </button>
 
           <button
@@ -146,17 +143,17 @@ export function LoginScreen() {
             disabled={isLoading}
             className="w-full py-4 border-2 border-teal-500 text-teal-500 rounded-xl hover:bg-teal-50 transition-colors disabled:opacity-50"
           >
-            Register
+            Cadastrar
           </button>
 
           {/* Divisor */}
           <div className="flex items-center my-2">
             <div className="flex-1 border-t border-gray-300"></div>
-            <span className="px-4 text-gray-500 text-sm">or</span>
+            <span className="px-4 text-gray-500 text-sm">ou</span>
             <div className="flex-1 border-t border-gray-300"></div>
           </div>
 
-          {/* Componente oficial do Google - retorna id_token (JWT) */}
+          {/* Botão oficial do Google */}
           <div className="flex justify-center">
             <GoogleLogin
               onSuccess={handleGoogleSuccess}
