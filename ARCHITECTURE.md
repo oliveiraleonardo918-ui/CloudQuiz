@@ -164,16 +164,16 @@ pontos = (10 × 2) + 8 = 28 pts
 
 ```mermaid
 erDiagram
-    User ||--o{ Score : "joga"
-    Question ||--|{ QuizSession : "compõe"
+    User ||--o{ Score : joga
+    Question }o--o{ Score : compoe
 
     User {
         string objectId PK
         string username UK
-        string password hashed
+        string password "hashed bcrypt"
         string email
         string displayName
-        object authData "{ google: { id } }"
+        object authData "OAuth providers"
         Date createdAt
         Date updatedAt
         ACL acl
@@ -186,26 +186,20 @@ erDiagram
         string optionB
         string optionC
         string optionD
-        string correctAnswer "A|B|C|D"
+        string correctAnswer "A B C ou D"
         string category
-        string difficulty "easy|medium|hard"
+        string difficulty "easy medium hard"
         Date createdAt
     }
 
     Score {
         string objectId PK
-        Pointer playerId FK "→ _User"
+        Pointer playerId FK "ref _User"
         string username "denormalizado"
         number points
         number totalQuestions
         Date playedAt
         Date createdAt
-    }
-
-    QuizSession {
-        string sessionId
-        Date playedAt
-        number finalScore
     }
 ```
 
