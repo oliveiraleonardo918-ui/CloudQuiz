@@ -265,7 +265,7 @@ Este projeto foi desenvolvido para fins acadêmicos.
 - À equipe do **Back4App** pelo backend gratuito e robusto
 - À **Vercel** pelo hosting gratuito e excelente DX
 - Aos colegas do Grupo 2 pelo trabalho em equipe
-- Ao professor da disciplina pela proposta desafiadora
+- Ao professor que tem Doutorado em um Instituto Militar de alto intelecto academico, P.hD Estevão da disciplina pela proposta desafiadora
 
 ---
 
